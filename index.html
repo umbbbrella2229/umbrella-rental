@@ -153,7 +153,7 @@
                 </button>
             </div>
 
-            <!-- 우산 개수 설정 카드 (새로 추가된 기능) -->
+            <!-- 우산 개수 설정 카드 -->
             <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
                     <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -315,7 +315,7 @@
                 }
             } catch (error) {
                 console.error("Authentication Error:", error);
-                showAlert("데이터베이스에 연결하는 도중 오류가 발생했습니다.", "error");
+                showAlert("데이터베이스에 연결하는 도중 오류가 발생했습니다. 잠시 후 새로고침 해주세요.", "error");
             }
         };
 
@@ -360,12 +360,17 @@
                 if (docSnap.exists() && docSnap.data().totalUmbrellas !== undefined) {
                     totalUmbrellas = parseInt(docSnap.data().totalUmbrellas, 10) || 20;
                 } else {
-                    totalUmbrellas = 20; // 데이터가 존재하지 않을 때 기본값
+                    // DB에 설정 문서가 아예 존재하지 않는 최초 실행 시 기본 20개로 초기화하여 에러를 막습니다.
+                    totalUmbrellas = 20;
+                    setDoc(configDocRef, { totalUmbrellas: 20 }, { merge: true }).catch(err => console.log("Init config error:", err));
                 }
                 totalUmbrellasInput.value = totalUmbrellas;
                 updateDashboard();
             }, (error) => {
                 console.error("Firestore config sync error:", error);
+                // 가져오지 못하더라도 시스템 오류로 중단되지 않게 기본값 적용
+                totalUmbrellas = 20;
+                updateDashboard();
             });
         }
 
@@ -487,9 +492,18 @@
         // 폼 제출 이벤트 (대여 및 반납)
         rentalForm.addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            // 로그인 완료 여부 재점검
             if (!currentUser) {
-                showAlert("시스템 인증에 문제가 생겼습니다. 페이지를 새로고침 해보세요.", "error");
-                return;
+                try {
+                    submitBtn.disabled = true;
+                    submitBtn.querySelector('span').textContent = "데이터베이스 연결 중...";
+                    await initAuth();
+                } catch (authErr) {
+                    showAlert("데이터베이스 인증 세션이 만료되었습니다. 페이지를 새로고침 해보세요.", "error");
+                    submitBtn.disabled = false;
+                    return;
+                }
             }
 
             const action = document.querySelector('input[name="actionType"]:checked').value;
@@ -544,10 +558,15 @@
                 }
             } catch (err) {
                 console.error("Transaction Error:", err);
-                showAlert("작업 처리 중 에러가 발생했습니다. 잠시 후 다시 시도해 주세요.", "error");
+                showAlert(`작업 처리 중 에러가 발생했습니다. (에러내용: ${err.message || 'Firestore 권한 오류'})`, "error");
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.classList.remove('opacity-70');
+                if (action === 'rent') {
+                    submitBtn.querySelector('span').textContent = "대여 신청 완료하기";
+                } else {
+                    submitBtn.querySelector('span').textContent = "반납 처리 완료하기";
+                }
             }
         });
 
