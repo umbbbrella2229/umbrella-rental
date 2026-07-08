@@ -153,6 +153,24 @@
                 </button>
             </div>
 
+            <!-- 우산 개수 설정 카드 (새로 추가된 기능) -->
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-blue-600"></i>
+                        <span>우산 수량 설정</span>
+                    </h3>
+                    <p class="text-xs text-slate-500 mt-0.5">부여고등학교에서 대여 가능한 총 우산 보유량을 조절합니다.</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <input type="number" id="totalUmbrellasInput" min="1" max="500" class="w-24 px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-semibold" value="20">
+                    <button onclick="updateTotalUmbrellas()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>저장</span>
+                    </button>
+                </div>
+            </div>
+
             <!-- 대여 리스트 테이블 -->
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -210,7 +228,7 @@
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, query, onSnapshot, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 입력해주신 실제 Firebase 설정값 적용 완료
+        // 실제 Firebase 설정값 적용 완료
         const firebaseConfig = typeof __firebase_config !== 'undefined' 
             ? JSON.parse(__firebase_config) 
             : {
@@ -233,7 +251,7 @@
         // 상태값 관리
         let currentUser = null;
         let activeRentals = [];
-        const totalUmbrellas = 20; // 전체 보유 우산 개수 (원하는 수량으로 조절 가능)
+        let totalUmbrellas = 20; // 기본 우산 수량 (동적으로 불러와 저장됨)
         const ADMIN_PASS = "12341234"; // 기본 관리자 비밀번호
 
         // DOM 요소들
@@ -260,6 +278,7 @@
         const availableCountEl = document.getElementById('availableCount');
         const rentedCountEl = document.getElementById('rentedCount');
         const rentalTableBody = document.getElementById('rentalTableBody');
+        const totalUmbrellasInput = document.getElementById('totalUmbrellasInput');
 
         const alertBox = document.getElementById('alertBox');
         const alertIcon = document.getElementById('alertIcon');
@@ -317,10 +336,8 @@
         function startRealtimeSync() {
             if (!currentUser) return;
 
-            // 공용 데이터 컬렉션 경로 지정 (RULE 1 준수)
+            // 1. 우산 대여 리스트 수신 경로 (RULE 1 준수)
             const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'rentals');
-
-            // 복잡한 쿼리(orderBy 등)를 생략하여 색인 요구 에러 사전 방지 (RULE 2 준수)
             const q = query(collectionRef);
 
             onSnapshot(q, (snapshot) => {
@@ -329,13 +346,26 @@
                     activeRentals.push({ id: doc.id, ...doc.data() });
                 });
 
-                // 대여 현황 실시간 계산
+                // 대여 현황 실시간 계산 및 렌더링
                 updateDashboard();
-                // 관리자 테이블 업데이트
                 renderAdminTable();
             }, (error) => {
-                console.error("Firestore sync error:", error);
-                showAlert("실시간 데이터를 동기화하는 데 실패했습니다.", "error");
+                console.error("Firestore rentals sync error:", error);
+                showAlert("실시간 대여 데이터를 동기화하는 데 실패했습니다.", "error");
+            });
+
+            // 2. 우산 총 수량 설정 불러오기 및 실시간 동기화 (RULE 1 준수)
+            const configDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config');
+            onSnapshot(configDocRef, (docSnap) => {
+                if (docSnap.exists() && docSnap.data().totalUmbrellas !== undefined) {
+                    totalUmbrellas = parseInt(docSnap.data().totalUmbrellas, 10) || 20;
+                } else {
+                    totalUmbrellas = 20; // 데이터가 존재하지 않을 때 기본값
+                }
+                totalUmbrellasInput.value = totalUmbrellas;
+                updateDashboard();
+            }, (error) => {
+                console.error("Firestore config sync error:", error);
             });
         }
 
@@ -347,6 +377,24 @@
             rentedCountEl.textContent = `${rentedCount}개`;
             availableCountEl.textContent = `${availableCount}개`;
         }
+
+        // 우산 설정값 DB에 저장하는 함수 (RULE 1 준수)
+        window.updateTotalUmbrellas = async function() {
+            const newTotal = parseInt(totalUmbrellasInput.value, 10);
+            if (isNaN(newTotal) || newTotal < 1) {
+                showAlert("수량은 1개 이상으로 입력해 주세요.", "error");
+                return;
+            }
+
+            try {
+                const configDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config');
+                await setDoc(configDocRef, { totalUmbrellas: newTotal }, { merge: true });
+                showAlert(`총 우산 보유량이 ${newTotal}개로 실시간 저장되었습니다.`, "success");
+            } catch (err) {
+                console.error("Config save error:", err);
+                showAlert("우산 보유량 변경 사항을 저장하는 데 실패했습니다.", "error");
+            }
+        };
 
         // 시간 경과 텍스트 변환기
         function getDurationText(timestamp) {
