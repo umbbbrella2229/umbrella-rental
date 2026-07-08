@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>부여고등학교 우산 대여 서비스</title>
-    <!-- Tailwind CSS -->
+    <!-- Tailwind CSS (보안 최적화 CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Font Awesome (아이콘용) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Font Awesome (HTTPS 보안 아이콘 링크) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" xintegrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
         body {
@@ -233,26 +233,24 @@
         </div>
     </footer>
 
-    <!-- Firebase SDK Imports -->
+    <!-- Firebase SDK Imports (HTTPS 기반 모듈 연결) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, getDocs, collection, query, onSnapshot, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // 실제 Firebase 설정값 적용 완료
-        const firebaseConfig = typeof __firebase_config !== 'undefined' 
-            ? JSON.parse(__firebase_config) 
-            : {
-                apiKey: "AIzaSyAOg00Ubop8yHE8O5nc2_3WVZdKJ2rAlYg",
-                authDomain: "umbrella-rental-d62a8.firebaseapp.com",
-                projectId: "umbrella-rental-d62a8",
-                storageBucket: "umbrella-rental-d62a8.firebasestorage.app",
-                messagingSenderId: "740018365660",
-                appId: "1:740018365660:web:888d52d58398b36e9ac019",
-                measurementId: "G-HTRVE0BPNT"
-              };
+        // Firebase 설정 정보
+        const firebaseConfig = {
+            apiKey: "AIzaSyAOg00Ubop8yHE8O5nc2_3WVZdKJ2rAlYg",
+            authDomain: "umbrella-rental-d62a8.firebaseapp.com",
+            projectId: "umbrella-rental-d62a8",
+            storageBucket: "umbrella-rental-d62a8.firebasestorage.app",
+            messagingSenderId: "740018365660",
+            appId: "1:740018365660:web:888d52d58398b36e9ac019",
+            measurementId: "G-HTRVE0BPNT"
+        };
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'umbrella-rental-app';
+        const appId = 'umbrella-rental-app';
 
         // Firebase 초기화
         const app = initializeApp(firebaseConfig);
@@ -262,8 +260,8 @@
         // 상태값 관리
         let currentUser = null;
         let activeRentals = [];
-        let totalUmbrellas = 20; // 기본 우산 수량 (동적으로 불러와 저장됨)
-        const ADMIN_PASS = "12341234"; // 기본 관리자 비밀번호
+        let totalUmbrellas = 20; 
+        const ADMIN_PASS = "12341234"; 
 
         // DOM 요소들
         const adminBtn = document.getElementById('adminBtn');
@@ -320,45 +318,36 @@
             }, 5000);
         }
 
-        // Firebase 익명 로그인 (RULE 3 준수)
+        // Firebase 익명 로그인 및 즉각 동기화
         const initAuth = async () => {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                const userCredential = await signInAnonymously(auth);
+                currentUser = userCredential.user;
+                updateSyncTime();
+                await forceFetchData();
+                startRealtimeSync();
             } catch (error) {
                 console.error("Authentication Error:", error);
-                showAlert("데이터베이스 인증 세션 형성에 실패했으나, 로컬 오프라인 데이터 모드로 작동합니다.", "error");
-                // 인증 에러가 발생해도 로딩 표시를 끝내고 기본 UI 작동을 재개합니다.
+                showAlert("서버 보안 세션 연결 실패. 핫스팟망 사용 혹은 브라우저 새로고침을 해주세요.", "error");
                 updateDashboard();
                 renderAdminTable();
             }
         };
 
+        // 초기 시작
         initAuth();
 
-        // 인증 상태 확인 리스너
+        // 인증 상태 실시간 리스너 추가 안정 장치
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 currentUser = user;
-                // 인증 성공 후 즉시 전체 데이터 수동 동기화 1회 실행 (안전망)
-                forceFetchData().then(() => {
-                    startRealtimeSync();
-                }).catch(() => {
-                    startRealtimeSync();
-                });
-            } else {
-                currentUser = null;
             }
         });
 
-        // 실시간 데이터 동기화 및 렌더링 (onSnapshot 사용 및 RULE 1, 2 준수)
+        // 실시간 데이터 동기화 및 렌더링
         function startRealtimeSync() {
-            if (!currentUser) return;
+            if (!auth.currentUser) return;
 
-            // 1. 우산 대여 리스트 수신 경로 (RULE 1 준수)
             const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'rentals');
             const q = query(collectionRef);
 
@@ -367,57 +356,38 @@
                 snapshot.forEach((doc) => {
                     activeRentals.push({ id: doc.id, ...doc.data() });
                 });
-
-                // 대여 현황 실시간 계산 및 렌더링
                 updateDashboard();
                 renderAdminTable();
                 updateSyncTime();
             }, (error) => {
-                console.error("Firestore rentals sync error:", error);
-                // 실시간 수신 대기에서 에러가 나거나 오프라인일 때 'Loading...' 상태에 갇히지 않게 강제로 로딩 완료 처리
+                console.error("Rentals stream error:", error);
                 updateDashboard();
                 renderAdminTable();
-                if (error.code === 'permission-denied') {
-                    showAlert("데이터를 읽을 권한이 부족합니다. Firebase Rules(규칙) 설정을 점검해 주세요.", "error");
-                }
             });
 
-            // 2. 우산 총 수량 설정 불러오기 및 실시간 동기화 (RULE 1 준수)
             const configDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config');
             onSnapshot(configDocRef, (docSnap) => {
                 if (docSnap.exists() && docSnap.data().totalUmbrellas !== undefined) {
                     totalUmbrellas = parseInt(docSnap.data().totalUmbrellas, 10) || 20;
                 } else {
-                    // DB에 설정 문서가 아예 존재하지 않는 최초 실행 시 기본 20개로 초기화하여 에러를 막습니다.
                     totalUmbrellas = 20;
                     setDoc(configDocRef, { totalUmbrellas: 20 }, { merge: true }).catch(err => console.log("Init config error:", err));
                 }
                 totalUmbrellasInput.value = totalUmbrellas;
                 updateDashboard();
             }, (error) => {
-                console.error("Firestore config sync error:", error);
-                // 가져오지 못하더라도 기본값(20개)으로 동작하도록 강제 패치
+                console.error("Config stream error:", error);
                 totalUmbrellas = 20;
                 totalUmbrellasInput.value = totalUmbrellas;
                 updateDashboard();
             });
         }
 
-        // 수동 강제 데이터 동기화(새로고침) 함수
+        // 수동 데이터 강제 새로고침 함수
         async function forceFetchData() {
             if (refreshIcon) refreshIcon.classList.add('fa-spin');
             
             try {
-                if (!currentUser) {
-                    await initAuth();
-                }
-                if (!currentUser) {
-                    // 사용자 세션이 없을 때 기본 UI 렌더링을 유도하여 무한 로딩 해결
-                    updateDashboard();
-                    renderAdminTable();
-                    return;
-                }
-
                 // 1. 대여 리스트 직접 가져오기
                 const collectionRef = collection(db, 'artifacts', appId, 'public', 'data', 'rentals');
                 const querySnapshot = await getDocs(query(collectionRef));
@@ -433,14 +403,12 @@
                     totalUmbrellas = parseInt(docSnap.data().totalUmbrellas, 10) || 20;
                 }
                 
-                // UI 전체 갱신
                 totalUmbrellasInput.value = totalUmbrellas;
                 updateDashboard();
                 renderAdminTable();
                 updateSyncTime();
             } catch (err) {
-                console.error("Force sync error:", err);
-                // 에러 발생 시에도 빈껍데기 UI 혹은 오프라인 백업 데이터를 보여주도록 안전장치 
+                console.error("Force sync failed:", err);
                 updateDashboard();
                 renderAdminTable();
             } finally {
@@ -452,20 +420,18 @@
             }
         }
 
-        // 수동 새로고침 클릭 이벤트 연결
+        // 수동 새로고침 버튼 핸들러
         manualRefreshBtn.addEventListener('click', async () => {
             await forceFetchData();
-            showAlert("데이터 동기화가 성공적으로 완료되었습니다.", "success");
+            showAlert("최신 우산 데이터 동기화 완료!", "success");
         });
 
-        // 최근 동기화 시간 변경
         function updateSyncTime() {
             const now = new Date();
             const timeString = now.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
             syncTimeEl.textContent = timeString;
         }
 
-        // 대시보드 스코어 업데이트
         function updateDashboard() {
             const rentedCount = activeRentals.length;
             const availableCount = Math.max(0, totalUmbrellas - rentedCount);
@@ -474,7 +440,6 @@
             availableCountEl.textContent = `${availableCount}개`;
         }
 
-        // 우산 설정값 DB에 저장하는 함수 (RULE 1 준수)
         window.updateTotalUmbrellas = async function() {
             const newTotal = parseInt(totalUmbrellasInput.value, 10);
             if (isNaN(newTotal) || newTotal < 1) {
@@ -486,18 +451,13 @@
                 const configDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'config');
                 await setDoc(configDocRef, { totalUmbrellas: newTotal }, { merge: true });
                 showAlert(`총 우산 보유량이 ${newTotal}개로 실시간 저장되었습니다.`, "success");
-                await forceFetchData(); // 저장 후 강제 동기화
+                await forceFetchData();
             } catch (err) {
                 console.error("Config save error:", err);
-                if (err.code === 'permission-denied') {
-                    showAlert("보유량을 수정할 권한이 없습니다. Firebase Rules 설정을 확인해 주세요.", "error");
-                } else {
-                    showAlert("우산 보유량 변경 사항을 저장하는 데 실패했습니다.", "error");
-                }
+                showAlert("저장 실패: Firebase 권한설정을 확인하세요.", "error");
             }
         };
 
-        // 시간 경과 텍스트 변환기
         function getDurationText(timestamp) {
             if (!timestamp) return "계산 중...";
             const now = new Date();
@@ -513,9 +473,248 @@
             return `${diffDays}일 ${diffHours % 24}시간 전`;
         }
 
-        // 관리자 모드 명단 렌더링
         function renderAdminTable() {
             if (activeRentals.length === 0) {
                 rentalTableBody.innerHTML = `
                     <tr>
-                        <td colspan="6" class="text-center py-10
+                        <td colspan="6" class="text-center py-10 text-slate-400">
+                            <i class="fa-solid fa-umbrella text-3xl mb-2 block"></i>
+                            현재 대여 중인 우산이 없습니다.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            rentalTableBody.innerHTML = '';
+            activeRentals.forEach((rental) => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-100 hover:bg-slate-50 transition";
+                
+                const dateStr = rental.rentedAt 
+                    ? rental.rentedAt.toDate().toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) 
+                    : '-';
+
+                tr.innerHTML = `
+                    <td class="py-4 px-4 font-semibold text-slate-700">${escapeHtml(rental.studentId)}</td>
+                    <td class="py-4 px-4 font-medium">${escapeHtml(rental.userName)}</td>
+                    <td class="py-4 px-4 text-slate-500">${escapeHtml(rental.userPhone)}</td>
+                    <td class="py-4 px-4 text-slate-500">${dateStr}</td>
+                    <td class="py-4 px-4"><span class="px-2 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-semibold">${getDurationText(rental.rentedAt)}</span></td>
+                    <td class="py-4 px-4 text-center">
+                        <button id="btn-return-${rental.id}" onclick="adminForceReturn('${rental.id}')" class="px-2 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-semibold transition duration-200">
+                            강제 반납
+                        </button>
+                    </td>
+                `;
+                rentalTableBody.appendChild(tr);
+            });
+        }
+
+        function escapeHtml(string) {
+            return String(string).replace(/[&<>"']/g, function (s) {
+                return {
+                    "&": "&amp;",
+                    "<": "&lt;",
+                    ">": "&gt;",
+                    '"': '&quot;',
+                    "'": '&#39;'
+                }[s];
+            });
+        }
+
+        actionTypeInputs.forEach(input => {
+            input.addEventListener('change', (e) => {
+                if (e.target.value === 'rent') {
+                    labelRent.className = "relative flex flex-col p-4 bg-slate-50 border-2 border-blue-600 rounded-xl cursor-pointer hover:bg-slate-100 transition";
+                    labelReturn.className = "relative flex flex-col p-4 bg-slate-50 border-2 border-transparent rounded-xl cursor-pointer hover:bg-slate-100 transition";
+                    iconReturn.className = "fa-solid fa-arrow-down-to-bracket text-slate-600 text-lg mb-1";
+                    submitBtn.className = "w-full py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition flex items-center justify-center space-x-2";
+                    submitBtn.querySelector('span').textContent = "대여 신청 완료하기";
+                } else {
+                    labelRent.className = "relative flex flex-col p-4 bg-slate-50 border-2 border-transparent rounded-xl cursor-pointer hover:bg-slate-100 transition";
+                    labelReturn.className = "relative flex flex-col p-4 bg-slate-50 border-2 border-emerald-600 rounded-xl cursor-pointer hover:bg-slate-100 transition";
+                    iconReturn.className = "fa-solid fa-arrow-down-to-bracket text-emerald-600 text-lg mb-1";
+                    submitBtn.className = "w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition flex items-center justify-center space-x-2";
+                    submitBtn.querySelector('span').textContent = "반납 처리 완료하기";
+                }
+            });
+        });
+
+        rentalForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!auth.currentUser) {
+                try {
+                    submitBtn.disabled = true;
+                    submitBtn.querySelector('span').textContent = "데이터베이스 연결 중...";
+                    await initAuth();
+                } catch (authErr) {
+                    showAlert("세션 연결에 실패했습니다. 페이지를 다시 열어주세요.", "error");
+                    submitBtn.disabled = false;
+                    return;
+                }
+            }
+
+            const action = document.querySelector('input[name="actionType"]:checked').value;
+            const studentId = studentIdInput.value.trim();
+            const userName = userNameInput.value.trim();
+            const userPhone = userPhoneInput.value.trim();
+
+            if (!studentId || !userName || !userPhone) {
+                showAlert("모든 필드를 정확하게 입력해 주세요.", "error");
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-70');
+
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'rentals', studentId);
+                const docSnap = await getDoc(docRef);
+
+                if (action === 'rent') {
+                    if (docSnap.exists()) {
+                        showAlert(`[대여 실패] 이미 대여 중인 우산이 있습니다! 먼저 기존 우산을 반납해 주세요.`, "error");
+                    } else {
+                        await setDoc(docRef, {
+                            studentId,
+                            userName,
+                            userPhone,
+                            rentedAt: serverTimestamp()
+                        });
+                        showAlert(`${userName}님, 우산 대여가 안전하게 신청되었습니다. 소중히 사용해 주세요! ☔`, "success");
+                        rentalForm.reset();
+                        await forceFetchData(); 
+                    }
+                } else {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        if (data.userName !== userName) {
+                            showAlert(`[반납 거부] 입력하신 이름(${userName})과 대여 등록자(${data.userName})의 이름이 다릅니다.`, "error");
+                        } else {
+                            await deleteDoc(docRef);
+                            showAlert(`${userName}님, 대여하신 우산이 반납되었습니다. 감사합니다!`, "success");
+                            rentalForm.reset();
+                            await forceFetchData(); 
+                        }
+                    } else {
+                        showAlert(`[반납 오류] 해당 학번(${studentId})으로 대여중인 정보가 없습니다.`, "error");
+                    }
+                }
+            } catch (err) {
+                console.error("Rental action error:", err);
+                showAlert("처리 중 에러가 발생했습니다. 구글 로그인 및 규칙을 확인해 주세요.", "error");
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-70');
+                if (action === 'rent') {
+                    submitBtn.querySelector('span').textContent = "대여 신청 완료하기";
+                } else {
+                    submitBtn.querySelector('span').textContent = "반납 처리 완료하기";
+                }
+            }
+        });
+
+        adminBtn.addEventListener('click', () => {
+            if (adminSection.classList.contains('hidden')) {
+                authModal.classList.remove('hidden');
+                adminPasswordInput.focus();
+            } else {
+                exitAdminMode();
+            }
+        });
+
+        cancelAuthBtn.addEventListener('click', () => {
+            authModal.classList.add('hidden');
+            adminPasswordInput.value = '';
+        });
+
+        confirmAuthBtn.addEventListener('click', () => {
+            if (adminPasswordInput.value === ADMIN_PASS) {
+                enterAdminMode();
+            } else {
+                showAlert("비밀번호가 올바르지 않습니다.", "error");
+                adminPasswordInput.value = '';
+                adminPasswordInput.focus();
+            }
+        });
+
+        adminPasswordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                confirmAuthBtn.click();
+            }
+        });
+
+        closeAdminBtn.addEventListener('click', () => {
+            exitAdminMode();
+        });
+
+        function enterAdminMode() {
+            authModal.classList.add('hidden');
+            adminPasswordInput.value = '';
+            
+            userSection.classList.add('hidden');
+            adminSection.classList.remove('hidden');
+            
+            adminBtn.innerHTML = `<i class="fa-solid fa-arrow-right-from-bracket"></i> <span>사용자 모드</span>`;
+            adminBtn.className = "bg-slate-700 hover:bg-slate-800 transition px-3 py-1.5 rounded-lg text-sm font-medium flex items-center space-x-1";
+            showAlert("관리자 대시보드에 성공적으로 로그인했습니다.", "success");
+            forceFetchData(); 
+        }
+
+        function exitAdminMode() {
+            adminSection.classList.add('hidden');
+            userSection.classList.remove('hidden');
+            
+            adminBtn.innerHTML = `<i class="fa-solid fa-user-shield"></i> <span>관리자 모드</span>`;
+            adminBtn.className = "bg-blue-700 hover:bg-blue-800 transition px-3 py-1.5 rounded-lg text-sm font-medium flex items-center space-x-1";
+            forceFetchData(); 
+        }
+
+        const pendingConfirmations = {};
+
+        window.adminForceReturn = async function(id) {
+            const btn = document.getElementById(`btn-return-${id}`);
+            if (!btn) return;
+
+            if (!pendingConfirmations[id]) {
+                pendingConfirmations[id] = true;
+                btn.textContent = "진짜 반납?";
+                btn.className = "px-2 py-1 text-xs bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold transition duration-200 animate-pulse";
+                
+                setTimeout(() => {
+                    if (pendingConfirmations[id]) {
+                        delete pendingConfirmations[id];
+                        btn.textContent = "강제 반납";
+                        btn.className = "px-2 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-semibold transition duration-200";
+                    }
+                }, 3000);
+            } else {
+                delete pendingConfirmations[id];
+                try {
+                    btn.disabled = true;
+                    btn.textContent = "처리 중..";
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'rentals', id);
+                    await deleteDoc(docRef);
+                    showAlert("선택한 대여 건을 강제 반납 완료했습니다.", "success");
+                    await forceFetchData(); 
+                } catch (err) {
+                    console.error("Force return error:", err);
+                    showAlert("수동 반납 처리에 실패했습니다.", "error");
+                    btn.disabled = false;
+                    btn.textContent = "강제 반납";
+                    btn.className = "px-2 py-1 text-xs bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg font-semibold transition duration-200";
+                }
+            }
+        };
+
+        setInterval(() => {
+            if (!adminSection.classList.contains('hidden') && activeRentals.length > 0) {
+                renderAdminTable();
+            }
+        }, 60000);
+
+    </script>
+</body>
+</html>
