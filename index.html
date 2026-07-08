@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>모두의 우산 - 실시간 우산 대여 서비스</title>
+    <title>부여고등학교 우산 대여 서비스</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome (아이콘용) -->
@@ -187,7 +187,7 @@
                 <span>관리자 인증</span>
             </h3>
             <p class="text-slate-500 text-sm mb-4">관리자 비밀번호를 입력해 주세요.</p>
-            <input type="password" id="adminPassword" placeholder="비밀번호 입력 (기본: 1234)" 
+            <input type="password" id="adminPassword" placeholder="관리자 외 접근금지." 
                 class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition text-sm mb-4">
             <div class="flex space-x-2">
                 <button id="cancelAuthBtn" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition text-sm">취소</button>
@@ -234,7 +234,7 @@
         let currentUser = null;
         let activeRentals = [];
         const totalUmbrellas = 20; // 전체 보유 우산 개수 (원하는 수량으로 조절 가능)
-        const ADMIN_PASS = "1234"; // 기본 관리자 비밀번호
+        const ADMIN_PASS = "12341234"; // 기본 관리자 비밀번호
 
         // DOM 요소들
         const adminBtn = document.getElementById('adminBtn');
